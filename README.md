@@ -17,4 +17,4 @@ Double-confirmation rule (NDVI threshold + BSI confirmation, minimum area filter
 Geospatial Foundation Model (Prithvi-EO-2.0 via terratorch), with quantitative comparison against band-math results. The MCP + LLM bonus was not attempted due to time constraints.
 
 ## How to run
-Open `Deforestation_Detection.ipynb` in Colab (or Jupyter with the `conda-geoenv` environment) and run all cells in order. Files in `outputs/` are already included in the repo for direct inspection without rerunning the pipeline.
+Open `Deforestation_Detection.ipynb` in Colab ( and run all cells in order. Files in `outputs/` are already included in the repo for direct inspection without rerunning the pipeline.
