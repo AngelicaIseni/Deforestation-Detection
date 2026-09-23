@@ -1,8 +1,5 @@
 # Learning log
 
-Notes from turning a rushed interview notebook into a proper project. One entry per study session: what I learned, what surprised me, what's still unclear.
-
----
 
 ## Day 1 — Finding and loading the data (STAC, Planetary Computer, odc-stac)
 
