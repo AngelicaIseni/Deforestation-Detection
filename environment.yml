@@ -1,0 +1,20 @@
+name: deforestation
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - rasterio
+  - rioxarray
+  - scipy
+  - odc-stac
+  - planetary-computer
+  - shapely
+  - contextily
+  - geopandas
+  - ipykernel
+  - jupyterlab
+  - folium
+  - matplotlib
+  - pystac-client
+prefix: C:\Users\angel\anaconda3\envs\deforestation
