@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -34,7 +36,7 @@ def search_wide_area(catalog, search_area, time_window,
     return list(search.items())
 
 
-    def choose_aoi(items, half_size=0.05, inset_deg=0.15):
+def choose_aoi(items, half_size=0.05, inset_deg=0.15):
     """Place a square AOI well inside the footprint of the largest scene.
 
     The largest footprint is usually the least clipped by the swath edge.
@@ -52,8 +54,7 @@ def search_wide_area(catalog, search_area, time_window,
     return bbox, mapping(box(*bbox))
 
 
-
-    def find_candidates(catalog, aoi_geojson, time_window,
+def find_candidates(catalog, aoi_geojson, time_window,
                     collection="sentinel-2-l2a", max_cloud=40, pool_size=30):
     """Return the least cloudy scenes over the AOI in a time window.
 
@@ -72,8 +73,7 @@ def search_wide_area(catalog, search_area, time_window,
     return found[:pool_size]
 
 
-
-    def clear_fraction_in_aoi(item, bbox, bad_classes):
+def clear_fraction_in_aoi(item, bbox, bad_classes):
     """Share of AOI pixels that are usable in a scene, between 0 and 1.
 
     Reads only the SCL band at its native 20 m, which is enough to judge
@@ -86,8 +86,7 @@ def search_wide_area(catalog, search_area, time_window,
     return float((~scl.isin(bad_classes)).mean().values)
 
 
-
-    def pick_scenes(candidates, bbox, bad_classes, how_many=5, min_clear=0.6):
+def pick_scenes(candidates, bbox, bad_classes, how_many=5, min_clear=0.6):
     """Select the scenes with the most usable pixels over the AOI.
 
     When the same acquisition appears more than once (reprocessed by ESA),
@@ -118,8 +117,7 @@ def search_wide_area(catalog, search_area, time_window,
     return good_ones[:how_many]
 
 
-
-    def load_scene(item, bbox, bands, resolution=10):
+def load_scene(item, bbox, bands, resolution=10):
     """Prepare the pixels of one scene over the AOI, without downloading yet.
 
     All bands are put on the same 10 m grid so they can be combined pixel
