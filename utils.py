@@ -129,5 +129,42 @@ def load_scene(item, bbox, bands, resolution=10):
                        resolution=resolution, chunks={})
     return ds.isel(time=0)
 
+def mask_and_scale(scene_data, item):
+    cloud_related_classes = [0, 1, 3, 8, 9, 10, 11]
+    scl = scene_data["SCL"]
+    is_clear = ~scl.isin(cloud_related_classes)
 
+    processing_baseline = item.properties.get("s2:processing_baseline", "00.00")
+    needs_offset = float(processing_baseline.split(".")[0]) >= 4  # baseline 04.00 onward
+
+    raw = scene_data[["B02", "B03", "B04", "B08", "B8A", "B11", "B12"]].astype("float32")
+    if needs_offset:
+        raw = raw - 1000  # BOA_ADD_OFFSET, standard value since processing baseline 04.00
+
+    reflectance = raw / 10000.0
+    reflectance = reflectance.where(is_clear)
+    return reflectance
+
+
+def valid_observation_count(period_name, band="B04"):
+    period_scenes = [info["clean"][band] for info in scenes.values() if info["period"] == period_name]
+    stack = xr.concat(period_scenes, dim="time")
+    return (~stack.isnull()).sum(dim="time")  
+
+
+def ndvi(reflectance):
+    nir, red = reflectance["B08"], reflectance["B04"]
+    return (nir - red) / (nir + red)
+
+def ndmi(reflectance):
+    nir, swir1 = reflectance["B08"], reflectance["B11"]
+    return (nir - swir1) / (nir + swir1)
+
+def evi(reflectance):
+    nir, red, blue = reflectance["B08"], reflectance["B04"], reflectance["B02"]
+    return 2.5 * (nir - red) / (nir + 6 * red - 7.5 * blue + 1)
+
+def bsi(reflectance):
+    swir1, red, nir, blue = reflectance["B11"], reflectance["B04"], reflectance["B08"], reflectance["B02"]
+    return ((swir1 + red) - (nir + blue)) / ((swir1 + red) + (nir + blue))
 
