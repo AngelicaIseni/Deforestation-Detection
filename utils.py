@@ -129,6 +129,7 @@ def load_scene(item, bbox, bands, resolution=10):
                        resolution=resolution, chunks={})
     return ds.isel(time=0)
 
+
 def mask_and_scale(scene_data, item):
     cloud_related_classes = [0, 1, 3, 8, 9, 10, 11]
     scl = scene_data["SCL"]
@@ -146,7 +147,7 @@ def mask_and_scale(scene_data, item):
     return reflectance
 
 
-def valid_observation_count(period_name, band="B04"):
+def valid_observation_count(period_name,scenes, band="B04"):
     period_scenes = [info["clean"][band] for info in scenes.values() if info["period"] == period_name]
     stack = xr.concat(period_scenes, dim="time")
     return (~stack.isnull()).sum(dim="time")  
