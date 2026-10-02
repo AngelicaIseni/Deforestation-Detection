@@ -131,6 +131,14 @@ def load_scene(item, bbox, bands, resolution=10):
 
 
 def mask_and_scale(scene_data, item):
+    """Turn raw Sentinel-2 values into clean surface reflectance.
+
+    Pixels flagged by the SCL band as clouds, shadows, snow, saturated or
+    missing are set to NaN. Scenes processed with baseline 04.00 or later
+    carry a radiometric offset of 1000 that Planetary Computer does not
+    remove, so it is subtracted here before scaling to the 0-1 range.
+    Returns a Dataset with the seven reflectance bands, without SCL.
+    """
     cloud_related_classes = [0, 1, 3, 8, 9, 10, 11]
     scl = scene_data["SCL"]
     is_clear = ~scl.isin(cloud_related_classes)
@@ -147,30 +155,66 @@ def mask_and_scale(scene_data, item):
     return reflectance
 
 
-def valid_observation_count(period_name,scenes, band="B04"):
+def valid_observation_count(period_name, scenes, band="B04"):
+    """Count, for each pixel, how many scenes of a period have usable data.
+
+    A pixel is usable in a scene if it survived masking, that is if it is
+    not NaN. One band is enough to check, since the mask is the same for
+    all of them. Returns a DataArray (y, x) of integers.
+    """
     period_scenes = [info["clean"][band] for info in scenes.values() if info["period"] == period_name]
     stack = xr.concat(period_scenes, dim="time")
-    return (~stack.isnull()).sum(dim="time")  
+    return (~stack.isnull()).sum(dim="time")
 
 
 def ndvi(reflectance):
+    """Normalized Difference Vegetation Index, from NIR and red.
+
+    High over dense green vegetation, close to zero over bare soil,
+    negative over water.
+    """
     nir, red = reflectance["B08"], reflectance["B04"]
     return (nir - red) / (nir + red)
 
+
 def ndmi(reflectance):
+    """Normalized Difference Moisture Index, from NIR and SWIR.
+
+    Tracks the water content of the canopy, so it reacts to drying and
+    to disturbance that leaves the vegetation green but thinner.
+    """
     nir, swir1 = reflectance["B08"], reflectance["B11"]
     return (nir - swir1) / (nir + swir1)
 
+
 def evi(reflectance):
+    """Enhanced Vegetation Index, from NIR, red and blue.
+
+    Like NDVI it measures vegetation vigour, but it saturates less over
+    dense canopy and is less affected by the atmosphere and the soil.
+    """
     nir, red, blue = reflectance["B08"], reflectance["B04"], reflectance["B02"]
     return 2.5 * (nir - red) / (nir + 6 * red - 7.5 * blue + 1)
 
+
 def bsi(reflectance):
+    """Bare Soil Index, from SWIR, red, NIR and blue.
+
+    Rises where soil is exposed and falls over vegetation, so it moves
+    in the opposite direction to NDVI when land is cleared.
+    """
     swir1, red, nir, blue = reflectance["B11"], reflectance["B04"], reflectance["B08"], reflectance["B02"]
     return ((swir1 + red) - (nir + blue)) / ((swir1 + red) + (nir + blue))
 
 
 def false_color(reflectance):
+    """Build a false colour image (NIR, red, green) ready for imshow.
+
+    Each band is stretched between its own 2nd and 98th percentile and
+    clipped to 0-1, which gives good contrast but means colours cannot
+    be compared between two images. Masked pixels are shown as black.
+    Returns a numpy array of shape (y, x, 3).
+    """
     def normalize(band):
         values = band.values
         valid = np.isfinite(values)
@@ -187,7 +231,14 @@ def false_color(reflectance):
     blue = normalize(reflectance["B03"])
     return np.dstack([red, green, blue])
 
-def period_median(index_name, period_name,scenes):
+
+def period_median(index_name, period_name, scenes):
+    """Collapse the scenes of a period into one map of an index.
+
+    Takes the per-pixel median across the scenes, ignoring masked values.
+    The median fills the gaps left by clouds and is not thrown off by a
+    single odd acquisition. Returns a DataArray (y, x).
+    """
     period_scenes = [info[index_name] for info in scenes.values() if info["period"] == period_name]
     stack = xr.concat(period_scenes, dim="time")
     return stack.median(dim="time", skipna=True)
