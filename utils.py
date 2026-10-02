@@ -169,3 +169,26 @@ def bsi(reflectance):
     swir1, red, nir, blue = reflectance["B11"], reflectance["B04"], reflectance["B08"], reflectance["B02"]
     return ((swir1 + red) - (nir + blue)) / ((swir1 + red) + (nir + blue))
 
+
+def false_color(reflectance):
+    def normalize(band):
+        values = band.values
+        valid = np.isfinite(values)
+        if valid.sum() == 0:
+            return np.zeros_like(values)
+        low, high = np.nanpercentile(values[valid], [2, 98])
+        if high == low:
+            high = low + 1e-6
+        stretched = np.clip((values - low) / (high - low), 0, 1)
+        return np.nan_to_num(stretched, nan=0.0)
+
+    red = normalize(reflectance["B08"])
+    green = normalize(reflectance["B04"])
+    blue = normalize(reflectance["B03"])
+    return np.dstack([red, green, blue])
+
+def period_median(index_name, period_name,scenes):
+    period_scenes = [info[index_name] for info in scenes.values() if info["period"] == period_name]
+    stack = xr.concat(period_scenes, dim="time")
+    return stack.median(dim="time", skipna=True)
+
