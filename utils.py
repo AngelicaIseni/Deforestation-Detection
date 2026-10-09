@@ -1,23 +1,28 @@
+"""Functions for the deforestation detection and validation notebooks.
+
+Grouped in the order the pipeline uses them: finding scenes, cleaning
+pixels, computing indices, turning the change map into alerts, and
+comparing the alerts with PRODES.
+"""
+
 import warnings
 
-import numpy as np
-import pandas as pd
-import geopandas as gpd
-import rioxarray
-import xarray as xr
-import matplotlib.pyplot as plt
-import contextily as cx
-from shapely.geometry import box, mapping, shape, Point
-
-import pystac_client
-import planetary_computer as pc
-import odc.stac
-from rasterio.features import shapes as raster_to_shapes
 import folium
-from folium.plugins import GroupedLayerControl
-import matplotlib.cm as cm
+import geopandas as gpd
+import matplotlib
 import matplotlib.colors as mcolors
+import numpy as np
+import odc.stac
+import pandas as pd
+import rioxarray  # noqa: F401  (registers the .rio accessor)
+import xarray as xr
+from rasterio import features
+from shapely.geometry import box, mapping, shape
 
+
+# ---------------------------------------------------------------------------
+# Finding and loading scenes
+# ---------------------------------------------------------------------------
 
 def search_wide_area(catalog, search_area, time_window,
                      collection="sentinel-2-l2a", max_cloud=30):
@@ -130,7 +135,11 @@ def load_scene(item, bbox, bands, resolution=10):
     return ds.isel(time=0)
 
 
-def mask_and_scale(scene_data, item):
+# ---------------------------------------------------------------------------
+# Cleaning pixels and computing indices
+# ---------------------------------------------------------------------------
+
+def mask_and_scale(scene_data, item, bad_classes=(0, 1, 3, 8, 9, 10, 11)):
     """Turn raw Sentinel-2 values into clean surface reflectance.
 
     Pixels flagged by the SCL band as clouds, shadows, snow, saturated or
@@ -139,9 +148,8 @@ def mask_and_scale(scene_data, item):
     remove, so it is subtracted here before scaling to the 0-1 range.
     Returns a Dataset with the seven reflectance bands, without SCL.
     """
-    cloud_related_classes = [0, 1, 3, 8, 9, 10, 11]
     scl = scene_data["SCL"]
-    is_clear = ~scl.isin(cloud_related_classes)
+    is_clear = ~scl.isin(list(bad_classes))
 
     processing_baseline = item.properties.get("s2:processing_baseline", "00.00")
     needs_offset = float(processing_baseline.split(".")[0]) >= 4  # baseline 04.00 onward
@@ -243,8 +251,178 @@ def period_median(index_name, period_name, scenes):
     stack = xr.concat(period_scenes, dim="time")
     return stack.median(dim="time", skipna=True)
 
+
+# ---------------------------------------------------------------------------
+# From change map to alerts
+# ---------------------------------------------------------------------------
+
+def vectorize_mask(mask, grid):
+    """Turn a boolean raster into polygons, one per patch of True pixels.
+
+    `grid` is the DataArray the mask was computed from: its transform puts
+    the polygons in the right place and its CRS is attached to the result.
+    Returns a GeoDataFrame in the CRS of the grid.
+    """
+    values = np.asarray(mask).astype("uint8")
+    polygons = [
+        shape(geom)
+        for geom, _ in features.shapes(values, mask=values == 1,
+                                       transform=grid.rio.transform())
+    ]
+    return gpd.GeoDataFrame(geometry=polygons, crs=grid.rio.crs)
+
+
+def vectorize_loss(change, threshold, min_area_m2):
+    """Polygons where the change map drops below a threshold.
+
+    Pixels below `threshold` are merged into polygons, and polygons smaller
+    than `min_area_m2` are dropped as noise. Areas are measured in the CRS
+    of the raster, which must be metric (UTM here).
+    Returns a GeoDataFrame with an `area_m2` column, in the raster CRS.
+    """
+    loss = vectorize_mask(change < threshold, change)
+    loss["area_m2"] = loss.geometry.area
+    return loss[loss["area_m2"] >= min_area_m2].reset_index(drop=True)
+
+
+def water_like_polygons(baseline, recent, threshold=-0.1):
+    """Polygons that stay below an NDVI threshold in both periods.
+
+    Land that is equally low in 2018 and 2023 is most likely water. It
+    should not show up as a change, but an alert that touches it is
+    treated as a false positive and removed.
+    """
+    return vectorize_mask((baseline < threshold) & (recent < threshold), baseline)
+
+
 def mean_value_in_polygon(geometry, raster, crs):
     """Mean of the raster values inside a polygon, ignoring missing pixels."""
     clipped = raster.rio.clip([geometry], crs)
     return float(clipped.mean(skipna=True))
 
+
+def severity_label(area_ha, mean_ndvi_change):
+    """Rough priority for a field team: high, medium or low.
+
+    High needs both a large area and a steep NDVI drop; the cut-offs are
+    round numbers chosen by judgement, not calibrated values.
+    """
+    if area_ha > 5 and mean_ndvi_change < -0.35:
+        return "high"
+    if area_ha > 1:
+        return "medium"
+    return "low"
+
+
+def build_alerts(loss, ndvi_change, bsi_change, water, bsi_threshold=0.05):
+    """From candidate loss polygons to a ranked list of alerts.
+
+    Three filters, in this order: the mean BSI change inside the polygon
+    must exceed `bsi_threshold` (bare soil confirms the NDVI drop), the
+    polygon must not touch a water-like area, and it must already have
+    passed the minimum area filter in `vectorize_loss`. The survivors are
+    ranked by area, largest first, and labelled by severity.
+    Returns a GeoDataFrame in the CRS of `loss`.
+    """
+    alerts = loss.copy()
+    alerts["mean_bsi_change"] = alerts.geometry.apply(
+        mean_value_in_polygon, args=(bsi_change, alerts.crs))
+    alerts = alerts[alerts["mean_bsi_change"] > bsi_threshold]
+
+    if len(water) > 0:
+        touches_water = alerts.geometry.intersects(water.to_crs(alerts.crs).union_all())
+        alerts = alerts[~touches_water]
+
+    alerts = alerts.copy()
+    alerts["mean_ndvi_change"] = alerts.geometry.apply(
+        mean_value_in_polygon, args=(ndvi_change, alerts.crs))
+    alerts["area_ha"] = alerts["area_m2"] / 10_000
+    alerts["severity"] = [severity_label(a, n) for a, n in
+                          zip(alerts["area_ha"], alerts["mean_ndvi_change"])]
+
+    centroids = alerts.geometry.centroid.to_crs(4326)
+    alerts["centroid_lon"] = centroids.x
+    alerts["centroid_lat"] = centroids.y
+
+    alerts = alerts.sort_values("area_ha", ascending=False).reset_index(drop=True)
+    alerts["priority_rank"] = alerts.index + 1
+    return alerts
+
+
+def summarise_alerts(alerts, start_year, end_year):
+    """A short plain-language summary of the alerts, for non-specialists."""
+    if len(alerts) == 0:
+        return (
+            f"No confirmed vegetation loss was found between {start_year} and "
+            f"{end_year} under the current thresholds. The area may be stable, "
+            "or the thresholds may be too strict for it."
+        )
+    top = alerts.iloc[0]
+    n_high = int((alerts["severity"] == "high").sum())
+    return (
+        f"Between {start_year} and {end_year}, {len(alerts)} areas show a loss of "
+        f"vegetation confirmed by two independent signals, a drop in NDVI and a "
+        f"rise in bare soil, for about {alerts['area_ha'].sum():.1f} hectares in "
+        f"total. {n_high} of them are high severity, meaning both large and "
+        f"strongly affected. The largest covers about {top['area_ha']:.1f} "
+        f"hectares, centred near latitude {top['centroid_lat']:.4f}, longitude "
+        f"{top['centroid_lon']:.4f}."
+    )
+
+
+def raster_to_overlay(data_array, cmap_name, vmin, vmax, name):
+    """Turn a raster into a coloured image layer for a folium map.
+
+    The raster is reprojected to EPSG:4326, coloured with a matplotlib
+    colormap between `vmin` and `vmax`, and made transparent where there
+    is no data.
+    """
+    reprojected = data_array.rio.reproject("EPSG:4326")
+    values = reprojected.values
+
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+    rgba = matplotlib.colormaps[cmap_name](norm(values))
+    rgba[..., 3] = np.where(np.isnan(values), 0, 0.75)
+
+    west, south, east, north = reprojected.rio.bounds()
+    return folium.raster_layers.ImageOverlay(
+        image=rgba, bounds=[[south, west], [north, east]], name=name, overlay=True)
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def to_mask(gdf, grid):
+    """Draw polygons on a grid: True inside, False outside.
+
+    The polygons are reprojected to the CRS of `grid` first, so any vector
+    layer can be compared pixel by pixel with the raster. An empty layer
+    gives an all-False mask.
+    """
+    shape_yx = grid.shape[-2:]
+    if len(gdf) == 0:
+        return np.zeros(shape_yx, dtype=bool)
+    projected = gdf.to_crs(grid.rio.crs)
+    mask = features.rasterize(projected.geometry, out_shape=shape_yx,
+                              transform=grid.rio.transform(), fill=0, dtype="uint8")
+    return mask.astype(bool)
+
+
+def polygon_coverage(reference, alerts):
+    """Share of each reference polygon covered by the alerts, from 0 to 1.
+
+    The alerts are merged first, so land covered by two alerts is not
+    counted twice. Both layers must be in the same metric CRS.
+    Returns a Series aligned with `reference`.
+    """
+    reference = reference[["geometry"]].copy()
+    reference["ref_id"] = range(len(reference))
+    merged = alerts[["geometry"]].dissolve()
+
+    pieces = gpd.overlay(reference, merged, how="intersection")
+    covered = pieces.geometry.area.groupby(pieces["ref_id"]).sum()
+
+    covered_m2 = reference["ref_id"].map(covered).fillna(0)
+    return pd.Series((covered_m2 / reference.geometry.area).values,
+                     index=reference.index, name="coverage")

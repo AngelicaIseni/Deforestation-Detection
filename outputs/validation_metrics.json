@@ -2,7 +2,7 @@
   "generated_on": "2026-10-09",
   "reference": {
     "source": "INPE PRODES, Legal Amazon, yearly deforestation",
-    "file": "data/prodes_amazonia_legal_v20260717.gpkg",
+    "file": "data\\prodes_amazonia_legal_v20260717.gpkg",
     "years_compared": [
       2019,
       2023
@@ -10,19 +10,25 @@
     "minimum_mapped_area_ha": 6.25
   },
   "pixel_level": {
-    "precision_whole_aoi": 0.228,
-    "precision_forest_only": 0.808,
+    "precision_whole_aoi": 0.23,
+    "precision_forest_only": 0.817,
     "recall": 0.585,
-    "f1_whole_aoi": 0.328
+    "f1_whole_aoi": 0.331
   },
   "false_positives": {
-    "total_ha": 811.0,
+    "total_ha": 808.2,
     "on_land_already_cleared_ha": 753.9,
-    "on_standing_forest_ha": 57.0,
-    "share_on_land_already_cleared": 0.93
+    "on_standing_forest_ha": 54.3,
+    "share_on_land_already_cleared": 0.933
   },
-  "aoi": {
+  "grid": {
+    "crs": "EPSG:32720",
+    "area_ha": 12188.0,
     "share_not_forest_in_2018": 0.775
+  },
+  "alerts": {
+    "count": 129,
+    "area_ha": 1050.3
   },
   "polygon_level": {
     "found_threshold": 0.5,
@@ -31,16 +37,16 @@
     "partial": 9,
     "missed": 5,
     "mean_coverage_by_year": {
-      "2019": 0.657,
-      "2020": 0.263,
-      "2021": 0.472,
+      "2019": 0.658,
+      "2020": 0.271,
+      "2021": 0.475,
       "2022": 0.289,
       "2023": 0.702
     },
     "mean_ndvi_change_by_group": {
-      "found": -0.329,
+      "found": -0.33,
       "missed": -0.061,
-      "partial": -0.138
+      "partial": -0.14
     }
   },
   "caveats": [
