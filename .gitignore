@@ -1,5 +1,10 @@
-
+# Jupyter and Python
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+
+# raw and large data, regenerated or downloaded
+data/
+learning/data/
+*.nc
 
