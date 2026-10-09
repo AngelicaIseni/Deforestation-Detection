@@ -1,7 +1,6 @@
 name: deforestation
 channels:
   - conda-forge
-  - defaults
 dependencies:
   - python=3.11
   - rasterio
@@ -17,4 +16,4 @@ dependencies:
   - folium
   - matplotlib
   - pystac-client
-prefix: C:\Users\angel\anaconda3\envs\deforestation
+
