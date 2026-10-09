@@ -1,0 +1,51 @@
+{
+  "generated_on": "2026-10-09",
+  "reference": {
+    "source": "INPE PRODES, Legal Amazon, yearly deforestation",
+    "file": "data/prodes_amazonia_legal_v20260717.gpkg",
+    "years_compared": [
+      2019,
+      2023
+    ],
+    "minimum_mapped_area_ha": 6.25
+  },
+  "pixel_level": {
+    "precision_whole_aoi": 0.228,
+    "precision_forest_only": 0.808,
+    "recall": 0.585,
+    "f1_whole_aoi": 0.328
+  },
+  "false_positives": {
+    "total_ha": 811.0,
+    "on_land_already_cleared_ha": 753.9,
+    "on_standing_forest_ha": 57.0,
+    "share_on_land_already_cleared": 0.93
+  },
+  "aoi": {
+    "share_not_forest_in_2018": 0.775
+  },
+  "polygon_level": {
+    "found_threshold": 0.5,
+    "n_polygons": 30,
+    "found": 16,
+    "partial": 9,
+    "missed": 5,
+    "mean_coverage_by_year": {
+      "2019": 0.657,
+      "2020": 0.263,
+      "2021": 0.472,
+      "2022": 0.289,
+      "2023": 0.702
+    },
+    "mean_ndvi_change_by_group": {
+      "found": -0.329,
+      "missed": -0.061,
+      "partial": -0.138
+    }
+  },
+  "caveats": [
+    "PRODES maps only the first clearing of primary forest, so alerts on land cleared before 2019 can be neither confirmed nor rejected by it.",
+    "Precision on the whole AOI understates agreement; precision on forest only compares the two sources over the same ground.",
+    "The comparison uses two dry-season snapshots, 2018 and 2023, so clearings that regrew in between can be missed."
+  ]
+}
