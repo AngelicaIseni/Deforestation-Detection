@@ -243,3 +243,8 @@ def period_median(index_name, period_name, scenes):
     stack = xr.concat(period_scenes, dim="time")
     return stack.median(dim="time", skipna=True)
 
+def mean_value_in_polygon(geometry, raster, crs):
+    """Mean of the raster values inside a polygon, ignoring missing pixels."""
+    clipped = raster.rio.clip([geometry], crs)
+    return float(clipped.mean(skipna=True))
+
