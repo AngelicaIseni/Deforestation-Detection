@@ -8,3 +8,4 @@ data/
 learning/data/
 *.nc
 
+ndvi_change.tif
