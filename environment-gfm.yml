@@ -1,0 +1,17 @@
+name: deforestation-gfm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - rioxarray
+  - geopandas
+  - matplotlib
+  - scipy
+  - ipykernel
+  - jupyterlab
+  - pip
+  - pip:
+      - terratorch
+
