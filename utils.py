@@ -426,3 +426,126 @@ def polygon_coverage(reference, alerts):
     covered_m2 = reference["ref_id"].map(covered).fillna(0)
     return pd.Series((covered_m2 / reference.geometry.area).values,
                      index=reference.index, name="coverage")
+
+
+
+# ---------------------------------------------------------------------------
+# Foundation model (Prithvi-EO-2.0)
+# ---------------------------------------------------------------------------
+
+
+def fit_to_grid(values, size):
+    """Cut or extend the last two axes of an array to exactly `size` pixels.
+
+    Extra rows or columns are dropped from the bottom and right; missing
+    ones are added there by repeating the edge pixels. The top-left corner,
+    and so the georeferencing, does not move.
+    """
+    values = values[..., :size, :size]
+    pad_y = size - values.shape[-2]
+    pad_x = size - values.shape[-1]
+    padding = [(0, 0)] * (values.ndim - 2) + [(0, pad_y), (0, pad_x)]
+    return np.pad(values, padding, mode="edge")
+
+
+def block_mean(values, block):
+    """Average non-overlapping blocks of `block` x `block` pixels.
+
+    Each output pixel is the mean of the pixels it covers, the same as
+    average resampling. The last two axes must be multiples of `block`.
+    """
+    *lead, h, w = values.shape
+    blocks = values.reshape(*lead, h // block, block, w // block, block)
+    return np.nanmean(blocks, axis=(-3, -1))
+
+
+def prepare_for_prithvi(composite, mean, std, size, block=3, scale=10_000):
+    """From a 10 m reflectance composite to a normalised 30 m model input.
+
+    `composite` is a DataArray (band, y, x) with reflectance between 0 and 1,
+    bands in the order the model expects. The values are scaled to HLS units,
+    gaps are filled with the band median, blocks of `block` x `block` pixels
+    are averaged, and each band is standardised with the pretraining `mean`
+    and `std`, so that 0 means a typical value for that band.
+    Returns a float32 numpy array (band, size / block, size / block).
+    """
+    mean = np.asarray(mean, dtype="float32")[:, None, None]
+    std = np.asarray(std, dtype="float32")[:, None, None]
+
+    values = fit_to_grid(composite.values.astype("float32"), size) * scale
+    band_medians = np.nanmedian(values, axis=(1, 2), keepdims=True)
+    values = np.where(np.isnan(values), band_medians, values)
+    values = block_mean(values, block)
+    return ((values - mean) / std).astype("float32")
+
+
+def tile_origins(size, tile=224, patch=16):
+    """Top-left corners (row, col) of the tiles covering a square image.
+
+    Two tiles per side, one at each edge. They overlap in the middle, and
+    the overlap is a whole number of patches so that the patch grids of
+    all tiles line up.
+    """
+    last = size - tile
+    assert 0 <= last <= tile, "two tiles per side must cover the image"
+    assert last % patch == 0, "tiles must start on the patch grid"
+    starts = [0, last]
+    return [(row, col) for row in starts for col in starts]
+
+
+def embed(image, model, tile=224, patch=16):
+    """One embedding per patch over the whole image.
+
+    The image is cut into overlapping tiles, all tiles go through the model
+    in one batch, the summary token is dropped and the remaining tokens are
+    put back on the patch grid. Where tiles overlap, the embeddings of the
+    same patch are averaged.
+    Returns an array (patches_y, patches_x, embedding_size).
+    """
+    import torch
+
+    origins = tile_origins(image.shape[-1], tile, patch)
+    tiles = np.stack([image[:, r:r + tile, c:c + tile] for r, c in origins])
+
+    with torch.no_grad():
+        tokens = model(torch.from_numpy(tiles))[-1][:, 1:, :]   # last block, no summary token
+
+    per_tile = tile // patch
+    tokens = tokens.reshape(len(origins), per_tile, per_tile, -1).numpy()
+
+    n = image.shape[-1] // patch
+    total = np.zeros((n, n, tokens.shape[-1]), dtype="float32")
+    count = np.zeros((n, n, 1), dtype="float32")
+    for emb, (r, c) in zip(tokens, origins):
+        pr, pc = r // patch, c // patch
+        total[pr:pr + per_tile, pc:pc + per_tile] += emb
+        count[pr:pr + per_tile, pc:pc + per_tile] += 1
+    return total / count
+
+
+def cosine_distance(a, b):
+    """1 minus the cosine of the angle between two vectors, along the last axis.
+
+    0 when the vectors point the same way, up to 2 when they point in
+    opposite directions. Their length does not matter.
+    """
+    a = a / np.linalg.norm(a, axis=-1, keepdims=True)
+    b = b / np.linalg.norm(b, axis=-1, keepdims=True)
+    return 1 - (a * b).sum(axis=-1)
+
+
+def patch_raster(values, reference, patch_size_m, name):
+    """Put a grid of patch values on the map, as a DataArray (y, x).
+
+    The grid starts at the top-left corner of `reference`, the raster the
+    patches were cut from, with square cells of `patch_size_m` metres.
+    """
+    transform = reference.rio.transform()
+    x0, y0 = transform.c, transform.f
+    n_y, n_x = values.shape
+    x_centres = x0 + patch_size_m * (np.arange(n_x) + 0.5)
+    y_centres = y0 - patch_size_m * (np.arange(n_y) + 0.5)
+
+    raster = xr.DataArray(values, dims=("y", "x"),
+                          coords={"y": y_centres, "x": x_centres}, name=name)
+    return raster.rio.write_crs(reference.rio.crs)
