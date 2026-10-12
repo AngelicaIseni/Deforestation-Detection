@@ -1,0 +1,103 @@
+{
+  "generated_on": "2026-10-12",
+  "model": "prithvi_eo_v2_300",
+  "patch_size_m": 480,
+  "n_patches": 529,
+  "distance": {
+    "min": 0.0114,
+    "median": 0.0466,
+    "max": 0.2459
+  },
+  "spearman_with_ndvi": {
+    "mean NDVI change (signed)": -0.342,
+    "mean absolute NDVI change": 0.835,
+    "share of pixels losing > 0.25": 0.704,
+    "share of pixels gaining > 0.25": 0.176
+  },
+  "prodes_patch_share_threshold": 0.1,
+  "n_patches_with_prodes": 44,
+  "auc_all_patches": {
+    "Prithvi distance": 0.869,
+    "mean absolute NDVI change": 0.803,
+    "share of NDVI loss pixels": 0.868,
+    "share covered by alerts": 0.847
+  },
+  "auc_mostly_forest": {
+    "Prithvi distance": 0.967,
+    "mean absolute NDVI change": 0.922,
+    "share of NDVI loss pixels": 0.922,
+    "share covered by alerts": 0.898
+  },
+  "missed_clearings": [
+    {
+      "year": 2020,
+      "area_ha": 6.411,
+      "coverage": 0.0,
+      "prithvi_distance": 0.028999999165534973,
+      "distance_percentile": 20.794
+    },
+    {
+      "year": 2019,
+      "area_ha": 6.294,
+      "coverage": 0.009,
+      "prithvi_distance": 0.057999998331069946,
+      "distance_percentile": 66.73
+    },
+    {
+      "year": 2022,
+      "area_ha": 14.504,
+      "coverage": 0.251,
+      "prithvi_distance": 0.06800000369548798,
+      "distance_percentile": 75.992
+    },
+    {
+      "year": 2021,
+      "area_ha": 11.146,
+      "coverage": 0.0,
+      "prithvi_distance": 0.07100000232458115,
+      "distance_percentile": 79.773
+    },
+    {
+      "year": 2021,
+      "area_ha": 12.454,
+      "coverage": 0.002,
+      "prithvi_distance": 0.061000000685453415,
+      "distance_percentile": 69.187
+    },
+    {
+      "year": 2021,
+      "area_ha": 8.994,
+      "coverage": 0.471,
+      "prithvi_distance": 0.07599999755620956,
+      "distance_percentile": 82.231
+    },
+    {
+      "year": 2022,
+      "area_ha": 37.904,
+      "coverage": 0.06,
+      "prithvi_distance": 0.05000000074505806,
+      "distance_percentile": 55.198
+    },
+    {
+      "year": 2019,
+      "area_ha": 19.05,
+      "coverage": 0.183,
+      "prithvi_distance": 0.10400000214576721,
+      "distance_percentile": 93.384
+    },
+    {
+      "year": 2023,
+      "area_ha": 15.162,
+      "coverage": 0.147,
+      "prithvi_distance": 0.0689999982714653,
+      "distance_percentile": 78.072
+    },
+    {
+      "year": 2020,
+      "area_ha": 8.757,
+      "coverage": 0.312,
+      "prithvi_distance": 0.09700000286102295,
+      "distance_percentile": 92.06
+    }
+  ]
+}
