@@ -549,3 +549,33 @@ def patch_raster(values, reference, patch_size_m, name):
     raster = xr.DataArray(values, dims=("y", "x"),
                           coords={"y": y_centres, "x": x_centres}, name=name)
     return raster.rio.write_crs(reference.rio.crs)
+
+
+
+
+def patch_mean(values, size, block):
+    """Mean of a 10 m raster over each model patch.
+
+    The raster is first brought to `size` x `size` pixels with `fit_to_grid`,
+    like the model input, then averaged over blocks of `block` x `block`
+    pixels. Works on any 2-D array: index values, or a boolean mask, in
+    which case the result is the share of each patch covered by it.
+    """
+    return block_mean(fit_to_grid(np.asarray(values, dtype="float32"), size), block)
+
+
+def auc_score(scores, labels):
+    """How well a score separates positives from negatives, from 0 to 1.
+
+    The probability that a randomly picked positive gets a higher score
+    than a randomly picked negative: 0.5 is no better than chance, 1 is a
+    perfect separation. Computed with the Mann-Whitney U statistic, so it
+    only depends on the ranking of the scores, not on their scale.
+    """
+    from scipy.stats import mannwhitneyu
+
+    scores = np.asarray(scores).ravel()
+    labels = np.asarray(labels, dtype=bool).ravel()
+    positives, negatives = scores[labels], scores[~labels]
+    u = mannwhitneyu(positives, negatives).statistic
+    return float(u / (len(positives) * len(negatives)))
