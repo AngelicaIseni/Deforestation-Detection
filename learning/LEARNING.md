@@ -167,37 +167,38 @@
 - Validation notebook kept separate from detection: it only reads `outputs/` and never downloads satellite data.
 - Common grid = the NDVI change raster (EPSG:32720, 1108 × 1100). Its values aren't used, only its shape, transform and CRS.
 - `rasterio.features.rasterize` is the reverse of `shapes`: polygons → 0/1 array on a given grid (`out_shape`, `transform`, `fill`, `dtype`). The output is plain numpy, safe only because every mask uses the same grid.
-- Check: pixels × 100 m² ≈ polygon area. PRODES ≈ 409 ha, alerts ≈ 1050 ha.
+- Check: pixels × 100 m² ≈ polygon area. PRODES 413.9 ha from the mask vs 415.8 ha from the polygons (pixel centres miss thin edges), alerts 1050.3 vs 1050.3 (they were born on this grid).
 - Masks combine with `&` (and), `|` (or), `~` (not); `.sum()` counts, `.mean()` gives a fraction.
 
 | Metric | Value |
 |---|---|
-| Precision, whole AOI | 22.8% |
+| Precision, whole AOI | 23.0% |
 | Recall | 58.5% |
-| F1 | 32.8% |
-| Accuracy | 92.0% (useless: most pixels are "no change" for both) |
+| F1 | 33.1% |
+| Accuracy | 92.0% (useless: flagging nothing at all would score 96.6%) |
 
 - Precision had a ceiling before any comparison: true positives can't exceed PRODES pixels, so ≤ ~39%.
 
 ### The key result: most disagreement is definitional
 - Built a mask of land **no longer primary forest in 2018**: accumulated deforestation to 2007 ∪ PRODES 2008–2018. Overlap between the two = 0, as expected. No forest and hydrography are empty over the AOI (checked with `rows=5` without bbox that the layers do contain data elsewhere).
-- **77.3%** of the AOI was already cleared by 2018, almost all of it before 2008.
+- **77.5%** of the AOI was already cleared by 2018, almost all of it before 2008 (70% accumulated to 2007, 8% in 2008–2018).
 
 | | Value |
 |---|---|
-| False positives on land already cleared | 750.4 ha (92.5%) |
-| False positives on standing forest | 60.6 ha (7.5%) |
-| **Precision where PRODES still looks** | **79.8%** |
+| False positives on land already cleared | 753.9 ha (93.3%) |
+| False positives on standing forest | 54.3 ha (6.7%) |
+| **Precision where PRODES still looks** | **81.7%** |
 
 - On forest, when the pipeline flags something, PRODES agrees four times out of five. The limit is recall.
 - The 750 ha on cleared land are **not confirmed**: PRODES can neither confirm nor reject them (secondary vegetation cleared? ploughed fields? dry pasture?).
 
 ### Polygon-level comparison
 - Pixel recall mixes "clearing missed" with "clearing found with a smaller outline". Per PRODES polygon: share covered by alerts, via `dissolve` (so overlaps aren't counted twice) + `gpd.overlay(how="intersection")` + `groupby().sum()` + `.map()`.
-- Groups (cut-off 0.5): found <!-- n -->, partial <!-- n -->, missed <!-- n -->.
-- Mean coverage by year: <!-- does it increase from 2019 to 2023? -->
-- Mean NDVI change inside missed polygons: <!-- close to -0.25 (threshold too strict) or close to 0 (regrowth)? -->
-- Residual layer over the AOI: <!-- n polygons -->
+- Groups (cut-off 0.5): **found 16, partial 9, missed 5** of 30. Seen per polygon, 25 of 30 clearings were touched by at least one alert, a kinder story than the 58.5% pixel recall. Three polygons sit at 0.44–0.48: with a cut-off of 0.4 it would be 19 / 6 / 5.
+- Mean coverage by year: 2019 0.66, 2020 0.27, 2021 0.48, 2022 0.29, 2023 0.70. No trend, and 4–9 polygons per year are too few to find one. What matters is probably not the age of a clearing but what it became: pasture stays low-NDVI in the dry season and is found years later, abandoned land regrows and is lost.
+- Mean NDVI change: found −0.33, partial −0.14, missed −0.06. The missed ones are regrowth, not a threshold just too strict.
+- Of the 5 missed, 3 are under 1.5 ha, far below the PRODES minimum: most likely fragments of larger polygons cut by the clip at the grid edge. The real misses are 2, both around −0.03, vegetation back by 2023.
+- Residual layer over the AOI: 10 polygons, 65.4 ha, years 2011–2024, of which 6.7 ha covered by alerts. Not in the "not forest in 2018" mask, so part of the 54 ha "false positives on forest" may sit on land PRODES added later.
 
 ### Results saved for the assistant
 - `outputs/validation_metrics.json`: the main numbers plus a list of **caveats**, so the numbers never travel without their limits.
@@ -210,6 +211,86 @@
 - `set_index` moves a column into the index; I needed the opposite. `overlay` drops the index but keeps columns, so ids must live in a column.
 - `KeyError: ['prodes_id'] not in index` after Restart & Run All: the cell creating the column had been run once and then lost. The order cells were **run** in and the order they are **written** in can differ; only a full restart shows it.
 - `NameError: ndvi_raster` after moving a function to `utils.py`: a function only sees its parameters and the variables of its own file, not the notebook's. Pass the raster as a parameter.
+
+## Looking back at the whole pipeline
+
+A full read of both notebooks, cell by cell, with the outputs in front of me. Things I had not seen while writing them:
+
+- **The AOI is not where I thought.** `choose_aoi` uses the reference point only to find tiles, then centres the AOI on the largest footprint: the AOI ended up about 100 km from the reference point, outside the search circle. Still in the deforestation arc, and it explains why 77% of it was cleared long ago.
+- **Same orbit, same tile.** All ten scenes are tile T20LMQ, relative orbit R053: same viewing geometry in both years. One more thing held fixed, like the months.
+- **Why `astype("float32")` comes before `- 1000`.** In uint16 there are no negatives: 800 − 1000 wraps to 65,336. NaN also exists only in floats.
+- **Why the offset faked a loss.** NDVI = (N − R) / (N + R). Adding c to both bands leaves the numerator unchanged and grows the denominator: forest at N = 0.30, R = 0.03 goes from 0.82 to 0.51 with c = 0.1. Normalised indices resist multiplication, not addition.
+- **EVI assumes reflectance between 0 and 1** (the `+ 1`). Left on the 0–10,000 scale, NDVI would be identical and EVI wrong.
+- **Within-season change is bigger than between-year change.** NDVI varies by ~0.15 inside a dry season and by ~0.006 between the two years' means: hence medians of five scenes, and pixel-level change instead of AOI means.
+- **The histogram is not "one peak and a thin tail".** There is a shoulder around −0.28, a second population of changed pixels, and the −0.25 threshold cuts through it. That is the technical root of the 58.5% recall: lowering the threshold would recover real pixels and eat into the central peak.
+- **The minimum-area filter removes many polygons and little area.** 2,228 raw polygons, 2,098 under 0.5 ha (942 single pixels), but only 87 ha of 1,138.
+- **The BSI check has no teeth because BSI is not independent of NDVI.** Both use NIR and red: when NIR falls and red rises, BSI rises almost by construction. All 130 candidates passed, the lowest mean BSI change was 0.072. "Two independent signals" in the summary is too strong.
+- **`intersects` is true for polygons that only share an edge**: a large clearing touching a pond by one pixel is dropped whole.
+- **The horizontal bands are roads.** They appear in all ten acquisitions, and the most negative rows of the change map are where the big clearing in the north-west is. Landscape, not sensor.
+- **The false colour comparison mixes seasons**: it shows the clearest scene of each period, 19 August 2018 against 29 June 2023.
+- **Two edges in the PRODES years.** PRODES 2019 starts in August 2018, inside my baseline window; my recent window runs to September 2023, which is PRODES 2024. A clearing in August 2023 is in my images but counts as a false positive.
+- **`vegetation_loss` is a measurement, `deforestation_alerts` is an interpretation.** The first says "green went down here", the second "worth checking". With the filters doing almost nothing they nearly coincide (130 vs 129), and "deforestation alerts" is an optimistic name: "vegetation loss alerts, to be verified" is more honest.
+
+## Foundation model (Prithvi-EO-2.0)
+
+### What it is
+- A **Vision Transformer** pretrained by IBM and NASA on 4.2 million HLS samples (harmonised Landsat and Sentinel-2, 30 m, six bands, global).
+- Trained as a **masked autoencoder**: hide 75% of the image, reconstruct it. To do that it has to learn what the land surface looks like. No labels needed, which is why it can see millions of images.
+- I use it **zero-shot**: no training, only its description of each patch. It was never trained to detect deforestation, and that is exactly what the comparison with PRODES tests.
+
+### Inside the model
+- The 224 × 224 input is cut into **patches of 16 × 16** (480 m at 30 m): 14 × 14 = 196 patches. Each patch, 16 × 16 × 6 = 1,536 numbers, goes through one learned 1024 × 1536 matrix: one vector of 1,024 per patch. Same idea as my `block_mean`, with learned weights instead of 1/9.
+- A **position embedding** is added (attention alone doesn't know where a patch is), plus a **CLS token** in front that ends up summarising the image: 197 tokens. I drop the CLS, I want a map.
+- **24 blocks**, each: LayerNorm → self-attention → add back → LayerNorm → MLP (1024 → 4096 → 1024) → add back.
+- **Self-attention**: every token makes a query, a key and a value; the 197 × 197 table of query·key scores, after softmax, says how much each token listens to each other; the new token is the weighted mean of the values. 16 heads in parallel. This is how a patch of pasture learns it sits at the edge of a forest.
+- The "+ x" (residual) adds an update instead of replacing the vector. LayerNorm is the same idea as my input normalisation, applied inside the network.
+- Parameter count, checked by hand: one block ≈ 4.2 M (attention) + 8.4 M (MLP) ≈ 12.6 M, × 24 ≈ 302 M. The notebook printed **304 M**.
+- TerraTorch returns **all 24 block outputs**, (B, 197, 1024) each, because segmentation heads mix early and late levels. I use the last one; an earlier block is a possible experiment.
+
+### Preparing the input
+The model doesn't fail on wrong input, it describes something it has never seen. Three things must match its training data:
+- **Bands**: B02, B03, B04, **B8A**, B11, B12, in that order. HLS uses B8A (narrow NIR), not B08, because it matches Landsat's NIR.
+- **Values**: × 10,000 (HLS scale), then `(x − mean) / std` with **Prithvi's own statistics** (`PRITHVI_V2_MEAN = [1087, 1342, 1433, 2734, 1958, 1363]`). Without × 10,000 every pixel becomes about −0.66 / −1.48 everywhere: a flat image, distances near zero, the bug of the first version.
+- **Why their statistics and not mine**: mine would force each image to mean 0, erasing what makes the AOI different from the world, and, worse, normalising 2018 and 2023 separately would erase part of the change before the model sees it. Fixed statistics for both years: change one thing only.
+- **Gaps**: filled with the band median **before** normalising. Filled with 0 instead, a gap becomes −0.66, an extreme value. (No gaps here: 5 clear observations everywhere.)
+- **Pixel size**: 30 m. At 10 m a patch would cover 160 m, objects three times bigger than anything the model knows. **Average** of 3 × 3 pixels, not nearest: a 30 m sensor measures the light of its whole footprint.
+- `block_mean` with `reshape(..., h // 3, 3, w // 3, 3).mean(axis=(-3, -1))`: an average pooling with stride 3, written with shapes. Numpy stores rows contiguously, so the reshape groups neighbours.
+- `fit_to_grid`: cut or pad (edge) only at the bottom and right, so the top-left corner, the origin of the affine transform, doesn't move. 1108 × 1100 → 1104 × 1104 at 10 m → 368 × 368 at 30 m = 23 × 23 patches.
+- My normalised means came out between −0.26 and +0.87, standard deviations 0.07–0.75: the AOI is more uniform than the whole planet, as it should be.
+
+### Covering the AOI
+- Four tiles of 224 starting at 0 and 144. The overlap, 80 pixels, is **exactly five patches**, so every tile's patch grid lines up with the others (`assert last % patch == 0`). A tile starting at 150 would shift its patches by 6 pixels.
+- The four tiles go through the model as one batch (4, 6, 224, 224). Tokens are put back on the 23 × 23 grid with a `total` and a `count` array: corners seen once, edges twice, the centre four times, each time with a different context. Their mean is the patch embedding.
+- Deterministic (`eval()` + `no_grad()`), and both years go through the same tiles in the same order.
+- The **dry run** with zeros only checks shapes, but those shapes are what `embed` relies on: a list of 24, 197 tokens with the CLS first. If the model returned 196, dropping one token would shift the whole map without any error.
+
+### Comparing two descriptions
+- **Cosine distance**: normalise both vectors to length 1, their dot product is the cosine of the angle. Only direction counts. Check: an embedding against itself gives ~1e-7, float32 precision.
+- Distances: min 0.011, median 0.047, max 0.246. Alive, not collapsed.
+- `patch_raster`: centres at `x0 + 480 · (i + 0.5)`, y going down; rioxarray rebuilds the transform from regularly spaced coordinates. The 23 × 23 raster overlays exactly on the NDVI map.
+
+### Results (04_prithvi_vs_prodes)
+- **The distance has no sign.** Spearman with the signed mean NDVI change per patch −0.34, with the mean *absolute* change **0.84**, with the share of loss pixels 0.70, with the share of gain pixels 0.18. It measures how much a patch changed, not whether it lost vegetation.
+- **AUC**: probability that a patch with a PRODES clearing ranks above one without. Only the ranking matters, so different scales can be compared. Computed from the Mann-Whitney U statistic (sum of ranks of the positives).
+
+| Score per 480 m patch | All (44 / 529) | Mostly forest (23 / 104) |
+|---|---|---|
+| Prithvi distance | 0.87 | 0.97 |
+| Share of NDVI loss pixels | 0.87 | 0.92 |
+| Share covered by alerts | 0.85 | 0.90 |
+| Mean absolute NDVI change | 0.80 | 0.92 |
+
+- With so few positive patches, a few hundredths is noise: "matches the index, maybe slightly better on forest".
+- Of the two clearings > 5 ha the alerts missed entirely, the 11 ha one (2021) is at the **80th percentile** of distance with almost no NDVI loss; the 6 ha one (2020) at the 21st. One out of two: an anecdote, not a result.
+- Spearman p-values are not reported: neighbouring patches are not independent, so p would look far more certain than it is.
+
+### Environment and errors
+- Separate environment (`environment-gfm.yml`): PyTorch and TerraTorch are gigabytes. `utils.py` imports `torch` **inside** `embed`, so the main environment can still import it. The gfm environment also needed `odc-stac` and `folium`, imported at the top of `utils.py`.
+- `pretrained=True` downloads ~1.3 GB from Hugging Face. In Jupyter there is no progress bar, so a stuck download looks like a frozen cell. Downloading from the terminal (`snapshot_download`) shows it; `HF_HUB_DISABLE_XET=1` switches to plain HTTP. Weights stay in `~/.cache/huggingface`, then `HF_HUB_OFFLINE=1`. The symlink warning on Windows only costs disk space.
+- Environment variables must be set **before** the import that reads them.
+- **The kernel died with no message** on `spearmanr` after the model had run. SciPy alone worked, numpy came from conda-forge: the cause was PyTorch (pip) and numpy/SciPy (conda) each bringing their own OpenMP runtime, which clash once both are active. `KMP_DUPLICATE_LIB_OK` didn't help. Fix: split the work. `03` runs the model and saves the distance map; `04` reads files only and runs in the main environment, without PyTorch. A clearer structure anyway, like `01` and `02`.
+- The kernel's real error goes to the terminal where `jupyter lab` was started, not to the notebook.
+- `overlay` warning "dropped geometries of different types": where a PRODES polygon and an alert only share an edge, the intersection is a line, with no area.
 
 ## Extra practice
 
