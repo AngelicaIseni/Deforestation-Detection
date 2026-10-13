@@ -46,6 +46,8 @@ flowchart LR
     D --> E[NDVI change<br/>2018 → 2023]
     E --> F[Alerts<br/>ranked, with severity]
     F --> G{Validate<br/>vs PRODES}
+    C --> P[Prithvi-EO-2.0<br/>embeddings per 480 m patch]
+    P --> G
 ```
 
 1. **Scene selection.** The pipeline searches Sentinel-2 L2A on Microsoft Planetary Computer and places the AOI well inside a single satellite swath. For each period it keeps the five clearest scenes, judged by the share of usable pixels *inside the AOI* (SCL band) rather than by tile-level cloud cover.
@@ -53,6 +55,7 @@ flowchart LR
 3. **Indices and change.** NDVI, NDMI, EVI and BSI are computed per scene, then combined into a median composite per period, and the two periods are differenced.
 4. **Alerts.** Pixels whose NDVI drops by more than 0.25 are turned into polygons. A polygon becomes an alert if it covers at least half a hectare, its bare-soil index rises, and it does not touch water. Alerts are ranked by area and labelled by severity, with a plain-language summary.
 5. **Validation.** The alerts are compared with PRODES 2019–2023 pixel by pixel and polygon by polygon. The comparison takes into account which land PRODES no longer monitors.
+6. **A second opinion.** The same composites go through Prithvi-EO-2.0, a foundation model pretrained by IBM and NASA, and the change it sees is compared with both the NDVI and PRODES.
 
 ## Results
 
@@ -87,7 +90,31 @@ The five clearings the alerts missed entirely have a mean NDVI change of about *
 </p>
 </details>
 
-All numbers and caveats are in [`outputs/validation_metrics.json`](outputs/validation_metrics.json). Run settings and the scene IDs used are in [`outputs/run_info.json`](outputs/run_info.json).
+## A second opinion from a foundation model
+
+[Prithvi-EO-2.0](https://arxiv.org/abs/2412.02732) is a Vision Transformer pretrained on millions of HLS images (harmonised Landsat and Sentinel-2, 30 m). It was never trained to detect deforestation. Here it is used without any training: the six-band composites of each period are brought to the model's scale, resolution and normalisation, the whole AOI is covered with four overlapping tiles, and every 480 m patch gets one embedding per period. The cosine distance between the 2018 and 2023 embeddings is the model's measure of change.
+
+<p align="center">
+  <img src="outputs/figures/prithvi_vs_ndvi_patches.png" alt="Mean NDVI change and Prithvi cosine distance per 480 m patch" width="90%"><br>
+  <sub><b>NDVI and Prithvi on the same 480 m grid.</b> Left: mean NDVI change per patch. Right: how differently the model describes each patch in 2018 and 2023.</sub>
+</p>
+
+**The model follows change in any direction.** The cosine distance has no sign. It correlates weakly with the mean NDVI change of a patch (Spearman −0.34), where losses and regrowth cancel out, and strongly with the mean *absolute* NDVI change (0.84).
+
+**It separates the PRODES clearings at least as well as the index.** For each score, the AUC is the probability that a patch containing a PRODES clearing ranks above a patch without one (0.5 is chance).
+
+| Score, per 480 m patch | All patches | Mostly forest in 2018 |
+|---|---:|---:|
+| Prithvi distance | **0.87** | **0.97** |
+| Share of NDVI loss pixels | 0.87 | 0.92 |
+| Share covered by alerts | 0.85 | 0.90 |
+| Mean absolute NDVI change | 0.80 | 0.92 |
+
+With 44 PRODES patches out of 529, and 23 out of 104 on land that was mostly forest, a gap of a few hundredths is within the noise. The fair reading is that a model with no rule written by hand matches the index, and may do slightly better where PRODES can still see new clearings.
+
+**It recovers one of the two clearings that had grown back.** Of the two PRODES clearings larger than 5 ha that the alerts missed entirely, one (11 ha, 2021) sits in a patch at the 80th percentile of Prithvi distance, with almost no NDVI loss. The other (6 ha, 2020) is at the 21st percentile: the model does not see it either. Two cases are an anecdote, not a result, but they point at what an embedding can add to a two-date index.
+
+All numbers and caveats are in [`outputs/validation_metrics.json`](outputs/validation_metrics.json) and [`outputs/prithvi_metrics.json`](outputs/prithvi_metrics.json). Run settings and the scene IDs used are in [`outputs/run_info.json`](outputs/run_info.json).
 
 ## Quick start
 
@@ -102,6 +129,13 @@ jupyter lab
 1. **`01_detection.ipynb`** needs internet access to Microsoft Planetary Computer (no account required). It writes everything to `outputs/`.
 2. **Download PRODES once** from [TerraBrasilis](https://terrabrasilis.dpi.inpe.br/en/download-files/) (Legal Amazon → PRODES → vector, GeoPackage) and put it in `data/`. Check that the file name matches `PRODES_PATH` at the top of the validation notebook.
 3. **`02_validation.ipynb`** reads only `outputs/` and `data/`, and downloads no imagery.
+4. **`03_foundation_model.ipynb`** runs in its own environment, since PyTorch is much heavier than the rest:
+   ```bash
+   conda env create -f environment-gfm.yml
+   conda activate deforestation-gfm
+   ```
+   It reads the band composites that `01_detection.ipynb` writes to `data/` and downloads the model weights (about 1.3 GB) the first time.
+5. **`04_prithvi_vs_prodes.ipynb`** compares the model with the NDVI and PRODES, in the main environment.
 
 You don't need to run anything to explore the results. `outputs/` is committed, and `outputs/interactive_map.html` opens in any browser.
 
@@ -110,8 +144,11 @@ You don't need to run anything to explore the results. `outputs/` is committed, 
 ```
 ├── 01_detection.ipynb      scene selection → cleaning → indices → change → alerts
 ├── 02_validation.ipynb     comparison with PRODES
-├── utils.py                functions shared by both notebooks
-├── environment.yml
+├── 03_foundation_model.ipynb   Prithvi-EO-2.0 embeddings and change map
+├── 04_prithvi_vs_prodes.ipynb  the model against NDVI and PRODES
+├── utils.py                functions shared by all notebooks
+├── environment.yml         main environment
+├── environment-gfm.yml     environment for the foundation model (PyTorch)
 ├── assets/                 README images
 ├── outputs/
 │   ├── figures/
@@ -119,8 +156,10 @@ You don't need to run anything to explore the results. `outputs/` is committed, 
 │   ├── vegetation_loss.geojson         candidate polygons
 │   ├── deforestation_alerts.geojson    ranked alerts
 │   ├── interactive_map.html
+│   ├── prithvi_change.tif              Prithvi cosine distance per 480 m patch
 │   ├── run_info.json                   AOI, scenes, thresholds, headline numbers
-│   └── validation_metrics.json         validation results and caveats
+│   ├── validation_metrics.json         validation results and caveats
+│   └── prithvi_metrics.json            foundation model comparison
 ├── archive/                first version, including a Prithvi-EO-2.0 experiment
 ├── learning/               study notes and exercises (LEARNING.md)
 └── data/                   large inputs, not tracked
@@ -132,12 +171,13 @@ You don't need to run anything to explore the results. `outputs/` is committed, 
 - **Hand-picked thresholds.** The NDVI drop, the bare-soil margin and the severity cut-offs are reasonable starting points, not values calibrated on this area.
 - **One small AOI.** The AOI is 10 × 10 km of a landscape that was mostly cleared before 2008. Results may differ along intact forest frontiers.
 - **The reference has its own scope.** PRODES works at 30 m with a 6.25 ha minimum and maps primary forest only.
+- **The foundation model sees 480 m at a time.** A patch covers about 23 ha, so a clearing is mixed with its surroundings. The model is used without fine-tuning, on Sentinel-2 L2A rather than the HLS data it was trained on.
 
 ## Roadmap
 
 - [x] Detection pipeline with radiometric fix and cloud masking
 - [x] Validation against PRODES, at pixel and polygon level
-- [ ] **Foundation model.** Revisit the Prithvi-EO-2.0 comparison with correct input preparation, covering the whole AOI.
+- [x] **Foundation model.** Prithvi-EO-2.0 over the whole AOI, compared with NDVI and PRODES
 - [ ] **An assistant that knows how far to trust itself.** An MCP server that exposes the pipeline as tools, so a language model can answer questions about the alerts with real numbers and report the measured accuracy and caveats alongside them.
 - [ ] A dense time series instead of two snapshots, and Sentinel-1 radar to see through clouds.
 
