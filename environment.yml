@@ -16,4 +16,7 @@ dependencies:
   - folium
   - matplotlib
   - pystac-client
+  - pip
+  - pip:
+      - fastmcp
 
