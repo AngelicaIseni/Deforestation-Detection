@@ -579,3 +579,42 @@ def auc_score(scores, labels):
     positives, negatives = scores[labels], scores[~labels]
     u = mannwhitneyu(positives, negatives).statistic
     return float(u / (len(positives) * len(negatives)))
+
+
+
+
+# ---------------------------------------------------------------------------
+# Context for each alert (used by the assistant)
+# ---------------------------------------------------------------------------
+
+def share_in_polygons(polygons, mask, grid):
+    """Share of each polygon covered by a boolean mask, from 0 to 1.
+
+    `mask` is a 2-D boolean array drawn on `grid` (for instance with
+    `to_mask`); `polygons` must be in the CRS of the grid. The share is the
+    mean of the mask over the pixels whose centre falls in the polygon.
+    Returns a Series aligned with `polygons`.
+    """
+    layer = grid.copy(data=np.asarray(mask, dtype="float32"))
+    return polygons.geometry.apply(mean_value_in_polygon, args=(layer, polygons.crs))
+
+
+def land_status(prodes_share, cleared_share, threshold=0.5):
+    """What PRODES says about the ground under an alert, in a few words.
+
+    - "mapped by PRODES": most of the alert matches a PRODES clearing of the
+      years compared, so PRODES confirms it;
+    - "cleared before 2019": most of it was already deforested by 2018, land
+      PRODES no longer monitors, so PRODES can neither confirm nor reject it;
+    - "forest, not in PRODES": most of it was forest that PRODES still
+      monitors and did not map as cleared, a real disagreement;
+    - "mixed": none of the three covers at least `threshold` of the alert.
+    """
+    forest_share = 1 - prodes_share - cleared_share
+    if prodes_share >= threshold:
+        return "mapped by PRODES"
+    if cleared_share >= threshold:
+        return "cleared before 2019"
+    if forest_share >= threshold:
+        return "forest, not in PRODES"
+    return "mixed"
