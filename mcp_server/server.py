@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 import geopandas as gpd
 from fastmcp import FastMCP
 from pydantic import Field
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_DIR / "outputs"
@@ -169,8 +169,12 @@ def whats_here(
     """
     lon_min, lat_min, lon_max, lat_max = RUN_INFO["aoi_bbox"]
     if not (lon_min <= lon <= lon_max and lat_min <= lat <= lat_max):
+        point = gpd.GeoSeries([Point(lon, lat)], crs="EPSG:4326").to_crs(METRIC_CRS).iloc[0]
+        study_area = gpd.GeoSeries([box(lon_min, lat_min, lon_max, lat_max)],
+                                   crs="EPSG:4326").to_crs(METRIC_CRS).iloc[0]
         return {
             "inside_study_area": False,
+            "distance_to_study_area_km": round(point.distance(study_area) / 1000, 1),
             "message": f"The point is outside the study area (longitude {lon_min} to {lon_max}, "
                        f"latitude {lat_min} to {lat_max}). No alert can be reported there, and the "
                        "absence of an alert does not mean the forest is intact.",
@@ -192,6 +196,81 @@ def whats_here(
                    "a hectare here. Clearings that had already regrown by 2023 can be missed.",
         "nearest_alert_distance_m": round(float(distances[nearest])),
         "nearest_alert": alert_summary(ALERTS.loc[nearest]),
+    }
+
+
+@mcp.tool
+def get_validation_summary() -> dict:
+    """How far the alerts can be trusted overall, measured against PRODES, INPE's official map.
+
+    Use this when the user asks how accurate or reliable the alerts are, how
+    much deforestation the system misses, or how it compares with official
+    data. Report precision on the whole area and on forest together, with the
+    explanation of why they differ, and the caveats.
+    """
+    pixel = VALIDATION["pixel_level"]
+    fp = VALIDATION["false_positives"]
+    polygons = VALIDATION["polygon_level"]
+    return {
+        "reference": VALIDATION["reference"],
+        "precision_whole_area": pixel["precision_whole_aoi"],
+        "precision_on_land_prodes_still_monitors": pixel["precision_forest_only"],
+        "recall": pixel["recall"],
+        "share_of_study_area_not_forest_in_2018": VALIDATION["grid"]["share_not_forest_in_2018"],
+        "share_of_unconfirmed_alert_area_on_land_cleared_before_2019": fp["share_on_land_already_cleared"],
+        "prodes_clearings_2019_2023": {
+            "total": polygons["n_polygons"],
+            "found_at_least_half": polygons["found"],
+            "partly_found": polygons["partial"],
+            "missed_entirely": polygons["missed"],
+            "mean_ndvi_change_inside": polygons["mean_ndvi_change_by_group"],
+        },
+        "how_to_read": (
+            "Precision is the share of alert area that PRODES also maps; recall is the share of PRODES "
+            "clearings the alerts find. Over the whole area precision looks low, but most of the area was "
+            "already deforested before 2019 and PRODES no longer monitors it, so most unconfirmed alerts "
+            "fall where PRODES cannot judge. On land PRODES still monitors, most alert area matches a "
+            "PRODES clearing. The main weakness is recall: clearings whose vegetation had grown back by "
+            "2023 show almost no NDVI change and are missed by a comparison of two dates."
+        ),
+        "caveats": VALIDATION["caveats"],
+    }
+
+
+@mcp.tool
+def get_foundation_model_summary() -> dict:
+    """What the Prithvi-EO-2.0 foundation model adds to the analysis, and its limits.
+
+    Use this when the user asks about Prithvi, the foundation model, AI or
+    embeddings, or whether the model confirms the alerts. The model was used
+    without any training on deforestation: its distance measures how much a
+    480 m area changed, in any direction, not whether forest was cleared.
+    """
+    missed = [c for c in PRITHVI["missed_clearings"] if c["coverage"] == 0]
+    return {
+        "model": PRITHVI["model"],
+        "patch_size_m": PRITHVI["patch_size_m"],
+        "what_the_distance_measures": (
+            "The cosine distance between the model's descriptions of the same 480 m area in 2018 and "
+            "2023. It has no sign: it follows how much an area changed, including regrowth and crop "
+            "cycles, not only vegetation loss."
+        ),
+        "spearman_with_ndvi_change": PRITHVI["spearman_with_ndvi"],
+        "auc_separating_prodes_patches": {
+            "all_patches": PRITHVI["auc_all_patches"],
+            "patches_mostly_forest_in_2018": PRITHVI["auc_mostly_forest"],
+            "patches_with_a_prodes_clearing": PRITHVI["n_patches_with_prodes"],
+            "how_to_read": "AUC is the probability that an area containing a PRODES clearing ranks above "
+                           "one without: 0.5 is chance, 1 is perfect. With a few dozen positive areas, "
+                           "differences of a few hundredths are within the noise.",
+        },
+        "clearings_missed_entirely_by_the_alerts": missed,
+        "limits": [
+            "A 480 m area covers about 23 ha, so a clearing is mixed with its surroundings.",
+            "Used zero-shot, without fine-tuning, on Sentinel-2 L2A rather than the HLS data it was "
+            "trained on.",
+            "A high distance means something changed, not that forest was cleared.",
+        ],
     }
 
 
