@@ -16,6 +16,8 @@ CALLS = [
     ("whats_here", {"lat": -9.5025, "lon": -63.4512}),
     ("whats_here", {"lat": -9.55, "lon": -63.40}),
     ("whats_here", {"lat": -8.76, "lon": -63.90}),
+    ("get_validation_summary", {}),
+    ("get_foundation_model_summary", {}),
 ]
 
 
