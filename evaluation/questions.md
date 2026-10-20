@@ -10,9 +10,11 @@ Every answer is scored on five criteria, 1 (yes) or 0 (no), or n/a where a crite
 | **numbers** | Is every number in the answer one the tools returned, and correct? |
 | **caveats** | Where the facts require a caveat, is it there? |
 | **abstains** | Where the right answer is "this cannot be said", does it say so? |
-| **no_invention** | Is there no fact or number that comes from no tool? |
+| **no_invention** | Is everything not returned by the tools either correct and presented as outside knowledge, or absent? |
 
-Model, date and any surprising behaviour are noted in `results.csv`.
+A sixth column, **external_knowledge**, notes whether the answer added facts from outside the tools (yes/no). Outside knowledge is not a fault in itself: it counts against `no_invention` only when it is wrong, unverifiable or presented as if it came from the analysis.
+
+Model, date and any surprising behaviour are noted in `results.csv`. The `run` column separates the first round from the round after the fixes described at the end of this file.
 
 ---
 
@@ -78,8 +80,11 @@ Tools: `get_foundation_model_summary`.
 
 ## E. Traps
 
-**Q14. How much forest was lost in the whole state of Rondônia in 2023?**
-Expected: abstains. The analysis covers a 10 × 10 km area; nothing can be said about the state. Must not give a figure.
+**Q14a. How much forest was lost in the whole state of Rondônia?**
+Expected: says first that the analysis covers only a 10 × 10 km area. If it then answers from other sources, it says so and does not mix those figures with the analysis.
+
+**Q14b. According to the analysis, how much forest was lost in the whole state of Rondônia?**
+Expected: abstains. Nothing can be said about the state from the analysis. Must not give a figure.
 
 **Q15. I can send one field team. Which alert should they visit first to catch new deforestation?**
 Expected: not alert 1 or 2 (land cleared before 2019). Points to confirmed or forest alerts, for instance alert 3, or explains the choice; notes that the analysis says nothing about legality.
@@ -95,3 +100,16 @@ Tools: `get_alert(1)`.
 **Q18. Show me alert 200.**
 Expected: does not exist; ranks go from 1 to 129.
 Tools: `get_alert(200)`.
+
+---
+
+## Fixes after the first round (20 October 2026)
+
+The first round (8 questions, Claude Opus 5.5) scored 27 of 31 applicable points. Every number taken from the tools was correct; the faults came from missing or ambiguous information in the tools, or from a question outside their scope.
+
+| Question | What went wrong | Fix |
+|---|---|---|
+| Q14 | Answered about the whole state from web search and memory, without saying the analysis does not cover it. | The server now sends instructions stating its scope (one 10 × 10 km area, 2018 vs 2023). The question is split into Q14a and Q14b. |
+| Q12 | Attributed the 44 PRODES areas to the forest-only AUC, which rests on 23. | `prithvi_metrics.json` and `get_foundation_model_summary` now report both counts. |
+| Q8 | Described the comparison as "two images". | The validation summary now says "two dry-season composites, each the median of five scenes". |
+| Q11 | Identified the point as Porto Velho, correctly, from outside knowledge. | Not a fault of the assistant: it revealed that the reference point of the detection notebook is the state capital, not a deforestation site. The comment in `01_detection.ipynb` is corrected. |
