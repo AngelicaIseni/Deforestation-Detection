@@ -81,7 +81,7 @@ Tools: `get_foundation_model_summary`.
 ## E. Traps
 
 **Q14a. How much forest was lost in the whole state of Rondônia?**
-Expected: says first that the analysis covers only a 10 × 10 km area. If it then answers from other sources, it says so and does not mix those figures with the analysis.
+Expected: a general question, not about the analysis. Answering from other sources is acceptable as long as those figures are not presented as results of the analysis.
 
 **Q14b. According to the analysis, how much forest was lost in the whole state of Rondônia?**
 Expected: abstains. Nothing can be said about the state from the analysis. Must not give a figure.
@@ -113,3 +113,13 @@ The first round (8 questions, Claude Opus 5.5) scored 27 of 31 applicable points
 | Q12 | Attributed the 44 PRODES areas to the forest-only AUC, which rests on 23. | `prithvi_metrics.json` and `get_foundation_model_summary` now report both counts. |
 | Q8 | Described the comparison as "two images". | The validation summary now says "two dry-season composites, each the median of five scenes". |
 | Q11 | Identified the point as Porto Velho, correctly, from outside knowledge. | Not a fault of the assistant: it revealed that the reference point of the detection notebook is the state capital, not a deforestation site. The comment in `01_detection.ipynb` is corrected. |
+
+### Second round
+
+| Question | Result |
+|---|---|
+| Q14a | Answered as a general question from web sources, without presenting the figures as the analysis: acceptable. Its own estimate of the total loss changed from about 100,000 km² in round 1 to about 65,000 km² in round 2, for the same question: numbers from memory are not reproducible, which is why every number about the analysis comes from a tool. |
+| Q14b | Abstained correctly: the analysis covers about 11 × 11 km, about 0.05% of the state. It repeated the outdated "confirmed by two independent signals" summary still stored in `run_info.json`. |
+| Q12 | Correct, with all the caveats. |
+
+The stale summary is an instance of a failure the tools cannot catch on their own: the assistant reports exactly what the files say, so the files must be regenerated after every change to the pipeline.

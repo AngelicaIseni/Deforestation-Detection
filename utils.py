@@ -360,15 +360,13 @@ def summarise_alerts(alerts, start_year, end_year):
     top = alerts.iloc[0]
     n_high = int((alerts["severity"] == "high").sum())
     return (
-        f"Between {start_year} and {end_year}, {len(alerts)} areas show a loss of "
-        f"vegetation confirmed by two independent signals, a drop in NDVI and a "
-        f"rise in bare soil, for about {alerts['area_ha'].sum():.1f} hectares in "
-        f"total. {n_high} of them are high severity, meaning both large and "
-        f"strongly affected. The largest covers about {top['area_ha']:.1f} "
-        f"hectares, centred near latitude {top['centroid_lat']:.4f}, longitude "
-        f"{top['centroid_lon']:.4f}."
+        f"Between {start_year} and {end_year}, {len(alerts)} areas show a strong drop "
+        f"in vegetation (NDVI), supported by a rise in bare soil, for about "
+        f"{alerts['area_ha'].sum():.1f} hectares in total. {n_high} of them are high "
+        f"severity, meaning both large and strongly affected. The largest covers about "
+        f"{top['area_ha']:.1f} hectares, centred near latitude {top['centroid_lat']:.4f}, "
+        f"longitude {top['centroid_lon']:.4f}."
     )
-
 
 def raster_to_overlay(data_array, cmap_name, vmin, vmax, name):
     """Turn a raster into a coloured image layer for a folium map.

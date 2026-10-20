@@ -7,6 +7,6 @@ Q12,Opus 5.5,2026-10-20,1,"get_alert, get_foundation_model_summary",1,0,1,n/a,1,
 Q14,Opus 5.5,2026-10-20,1,web search,0,n/a,0,0,0,yes,"Ambiguous question; answered about the state from the web and memory, without stating the scope of the analysis."
 Q15,Opus 5.5,2026-10-20,1,"list_alerts, get_alert",1,1,1,n/a,1,no,"Chose alert 3, explained why not alert 1; offered forest alerts for new clearings."
 Q17,Opus 5.5,2026-10-20,1,get_alert,1,1,1,1,1,yes,"Corrected the premise and refused a count for alert 1; gave a rough tree count for alert 3 from typical densities, flagged as rough."
-Q14a,,,2,,,,,,,,
-Q14b,,,2,,,,,,,,
-Q12,,,2,,,,,,,,
+Q14a,Opus 5.5,2026-10-20,2,web search,n/a,n/a,1,n/a,1,yes,"General question answered from the web, not presented as the analysis. Own estimate flagged as uncertain: about 65,000 km2, against about 100,000 km2 in round 1 for the same question."
+Q14b,Opus 5.5,2026-10-20,2,"get_run_info, get_validation_summary",1,1,1,1,1,no,"Abstains: the analysis covers about 11 x 11 km, about 0.05% of the state. Repeats the stale 'two signals' sentence from run_info.json."
+Q12,Opus 5.5,2026-10-20,2,"get_alert, get_foundation_model_summary",1,1,1,n/a,1,no,"Correct; does not mention the AUC this time, so the 23-area fix is not exercised."
