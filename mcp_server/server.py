@@ -22,7 +22,6 @@ METRIC_CRS = "EPSG:32720"   # UTM 20S, the grid of the analysis, for distances i
 LandStatus = Literal["mapped by PRODES", "cleared before 2019", "forest, not in PRODES", "mixed"]
 Severity = Literal["high", "medium", "low"]
 
-mcp = FastMCP(name="deforestation")
 
 
 def read_json(name):
@@ -36,6 +35,19 @@ ALERTS_METRIC = ALERTS.to_crs(METRIC_CRS)
 VALIDATION = read_json("validation_metrics.json")
 PRITHVI = read_json("prithvi_metrics.json")
 RUN_INFO = read_json("run_info.json")
+
+lon_min, lat_min, lon_max, lat_max = RUN_INFO["aoi_bbox"]
+mcp = FastMCP(
+    name="deforestation",
+    instructions=(
+        "Results of a deforestation analysis of one 10 x 10 km area in Rondonia, Brazil "
+        f"(longitude {lon_min:.2f} to {lon_max:.2f}, latitude {lat_min:.2f} to {lat_max:.2f}), comparing "
+        "the dry seasons of 2018 and 2023. Use these tools for any question about the analysis, the "
+        "alerts or this area. They say nothing about other places or years: for such questions, first "
+        "say that the analysis does not cover them. Report numbers as the tools return them instead of "
+        "computing new ones, and keep the caveats the tools give."
+    ),
+)
 
 
 def ordinal(n):
@@ -231,7 +243,7 @@ def get_validation_summary() -> dict:
             "already deforested before 2019 and PRODES no longer monitors it, so most unconfirmed alerts "
             "fall where PRODES cannot judge. On land PRODES still monitors, most alert area matches a "
             "PRODES clearing. The main weakness is recall: clearings whose vegetation had grown back by "
-            "2023 show almost no NDVI change and are missed by a comparison of two dates."
+            "2023 show almost no NDVI change and are missed by a comparison of two dry-season composites, each the median of five scenes."
         ),
         "caveats": VALIDATION["caveats"],
     }
@@ -260,6 +272,7 @@ def get_foundation_model_summary() -> dict:
             "all_patches": PRITHVI["auc_all_patches"],
             "patches_mostly_forest_in_2018": PRITHVI["auc_mostly_forest"],
             "patches_with_a_prodes_clearing": PRITHVI["n_patches_with_prodes"],
+            "patches_with_a_prodes_clearing_mostly_forest": PRITHVI.get("n_patches_with_prodes_mostly_forest"),
             "how_to_read": "AUC is the probability that an area containing a PRODES clearing ranks above "
                            "one without: 0.5 is chance, 1 is perfect. With a few dozen positive areas, "
                            "differences of a few hundredths are within the noise.",
