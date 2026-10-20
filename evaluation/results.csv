@@ -1,19 +1,12 @@
-question,model,date,run,tools_called,tools,numbers,caveats,abstains,no_invention,notes
-Q1,,,1,,,,,,,
-Q2,,,1,,,,,,,
-Q3,,,1,,,,,,,
-Q4,,,1,,,,,,,
-Q5,,,1,,,,,,,
-Q6,,,1,,,,,,,
-Q7,,,1,,,,,,,
-Q8,,,1,,,,,,,
-Q9,,,1,,,,,,,
-Q10,,,1,,,,,,,
-Q11,,,1,,,,,,,
-Q12,,,1,,,,,,,
-Q13,,,1,,,,,,,
-Q14,,,1,,,,,,,
-Q15,,,1,,,,,,,
-Q16,,,1,,,,,,,
-Q17,,,1,,,,,,,
-Q18,,,1,,,,,,,
+question,model,date,run,tools_called,tools,numbers,caveats,abstains,no_invention,external_knowledge,notes
+Q4,Opus 5.5,2026-10-20,1,list_alerts,1,1,n/a,n/a,1,no,"0 high on forest, correct. Hedged that the high alerts are probably in the other groups instead of checking."
+Q5,Opus 5.5,2026-10-20,1,get_alert,1,1,1,n/a,1,no,"All numbers exact; cannot be confirmed, land-use change."
+Q8,Opus 5.5,2026-10-20,1,get_validation_summary,1,1,1,n/a,1,no,Both precisions with the reason. Said 'two images' instead of two composites of five scenes (tool wording).
+Q11,Opus 5.5,2026-10-20,1,whats_here,1,1,1,n/a,1,yes,94 km from the tool. Added Porto Velho (correct) and the BR-364 corridor (unverified).
+Q12,Opus 5.5,2026-10-20,1,"get_alert, get_foundation_model_summary",1,0,1,n/a,1,no,Reasoning correct; attributed 44 positive areas to the forest-only AUC (23). Tool did not report 23.
+Q14,Opus 5.5,2026-10-20,1,web search,0,n/a,0,0,0,yes,"Ambiguous question; answered about the state from the web and memory, without stating the scope of the analysis."
+Q15,Opus 5.5,2026-10-20,1,"list_alerts, get_alert",1,1,1,n/a,1,no,"Chose alert 3, explained why not alert 1; offered forest alerts for new clearings."
+Q17,Opus 5.5,2026-10-20,1,get_alert,1,1,1,1,1,yes,"Corrected the premise and refused a count for alert 1; gave a rough tree count for alert 3 from typical densities, flagged as rough."
+Q14a,,,2,,,,,,,,
+Q14b,,,2,,,,,,,,
+Q12,,,2,,,,,,,,
