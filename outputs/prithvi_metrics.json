@@ -1,5 +1,5 @@
 {
-  "generated_on": "2026-10-13",
+  "generated_on": "2026-10-20",
   "model": "prithvi_eo_v2_300",
   "patch_size_m": 480,
   "n_patches": 529,
@@ -16,6 +16,7 @@
   },
   "prodes_patch_share_threshold": 0.1,
   "n_patches_with_prodes": 44,
+  "n_patches_with_prodes_mostly_forest": 23,
   "auc_all_patches": {
     "Prithvi distance": 0.869,
     "mean absolute NDVI change": 0.803,
